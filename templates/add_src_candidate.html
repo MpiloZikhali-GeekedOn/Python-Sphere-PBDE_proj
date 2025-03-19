@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add SRC Candidates</title>
+</head>
+<body>
+{% extends "base.html" %}
+{% block content %}
+<h1>Add SRC Candidate</h1>
+<form action="/admin/add_src_candidate" method="post" enctype="multipart/form-data">
+    <label for="name">Candidate Name:</label>
+    <input type="text" id="name" name="name" required>
+
+    <label for="department">Department:</label>
+    <input type="text" id="department" name="department" required>
+
+    <label for="contribution">Contribution:</label>
+    <input type="text" id="contribution" name="contribution" required>
+
+    <label for="position">Position:</label>
+    <select id="position" name="position" required>
+        <option value="President">President</option>
+        <option value="Vice">Vice</option>
+        <option value="Treasurer">Treasurer</option>
+    </select>
+
+    <label for="political_party">Political Party:</label>
+    <input type="text" id="political_party" name="political_party" required>
+
+    <label for="profile_picture">Profile Picture:</label>
+    <input type="file" id="profile_picture" name="profile_picture" accept="image/*" required>
+
+    <label for="proof_document">Proof of Contribution:</label>
+    <input type="file" id="proof_document" name="proof_document" accept=".pdf,.doc,.docx" required>
+
+    <button type="submit">Add Candidate</button>
+</form>
+{% endblock %}
+</body>
+</html>

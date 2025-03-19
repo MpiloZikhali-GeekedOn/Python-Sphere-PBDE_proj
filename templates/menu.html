@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Menu</title>
+</head>
+<body>
+{% extends "base.html" %}
+{% block content %}
+<h1>Welcome, {{ name }}!</h1>
+<p>This is the menu page.</p>
+<ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/register">Register another user</a></li>
+    <li><a href="/voting-events">View Voting Events</a></li> <!-- Added Link -->
+    <li><a href="/logout">Logout</a></li>
+</ul>
+{% endblock %}
+
+
+</body>
+</html>

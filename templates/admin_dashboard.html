@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin Dashboard</h1>
+<p>Welcome, Admin ({{ email }})!</p>
+ <div class="container my-5">
+        <h1>Admin Dashboard</h1>
+        <hr>
+
+        <!-- Voting Events Management -->
+        <h2>Manage Voting Events</h2>
+        <a href="{{ url_for('create_voting_event') }}" class="btn btn-primary">Create Voting Event</a>
+        <a href="{{ url_for('view_voting_events') }}" class="btn btn-secondary">View All Voting Events</a>
+
+        <br><br>
+
+        <!-- Candidates Management -->
+        <h2>Manage Candidates</h2>
+        <a href="{{ url_for('add_candidates') }}" class="btn btn-primary">Add Candidates</a>
+        <a href="{{ url_for('view_candidates') }}" class="btn btn-secondary">View All Candidates</a>
+
+{% endblock %}
+</body>
+</html>

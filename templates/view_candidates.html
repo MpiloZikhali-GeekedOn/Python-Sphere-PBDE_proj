@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Candidates</title>
+    <!-- Add Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .candidate-card {
+            max-width: 18rem;
+            margin: 10px;
+        }
+        .candidate-profile {
+            height: 200px;
+            width: 100%;
+            object-fit: cover;
+        }
+        .candidate-name {
+            font-weight: bold;
+            font-size: 1.25rem;
+            text-align: center;
+            margin-bottom: 0;
+        }
+        .candidate-department {
+            font-size: 1rem;
+            color: #777;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container my-5">
+        <h1 class="text-center mb-4">Candidates</h1>
+        <div class="row d-flex justify-content-center">
+            <!-- Loop through candidates -->
+            {% for candidate in candidates %}
+                <div class="col-md-4 d-flex justify-content-center">
+                    <div class="card candidate-card">
+                        <!-- Display Profile Picture -->
+                        {% if candidate.profile_picture %}
+                            <img src="{{ candidate.profile_picture }}" class="card-img-top candidate-profile" alt="Profile Picture of {{ candidate.name }}">
+                        {% else %}
+        <img src="{{ url_for('uploaded_file', filename=candidate.profile_picture.split('/')[-1]) if candidate.profile_picture else '/static/default-profile.jpg' }}"
+     class="card-img-top candidate-profile"
+     alt="Profile Picture of {{ candidate.name }}">
+                        {% endif %}
+
+                        <div class="card-body">
+                            <!-- Highlighted Name -->
+                            <p class="candidate-name">{{ candidate.name }}</p>
+                            <!-- Highlighted Department -->
+                            <p class="candidate-department">Department: {{ candidate.department }}</p>
+                            <!-- Other Candidate Info -->
+                            <p class="card-text"><strong>Position:</strong> {{ candidate.position }}</p>
+                            <p class="card-text"><strong>Political Party:</strong> {{ candidate.political_party }}</p>
+                            <p class="card-text"><strong>Contribution:</strong> {{ candidate.contribution }}</p>
+                            <a href="{{ candidate.proof_document }}" class="btn btn-primary btn-sm" target="_blank">View Proof</a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Add Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

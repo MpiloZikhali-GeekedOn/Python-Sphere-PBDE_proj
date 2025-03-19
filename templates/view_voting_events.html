@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="Eng">
+<head>
+    <title>View Voting Events</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+
+{% extends "base.html" %}
+
+{% block title %}Voting Events{% endblock %}
+
+{% block content %}
+<h1>Welcome, {{ name }}!</h1> <!-- Display the logged-in user's name -->
+<h2>Voting Events</h2>
+<ul>
+    {% if voting_events %}
+        {% for event in voting_events %}
+            <li>
+                <strong>{{ event.name }}</strong><br>
+                Start Date: {{ event.start_date }}<br>
+                End Date: {{ event.end_date }}<br>
+                Description: {{ event.description }}<br>
+               <form action="{{ url_for('vote', event_id=event.id) }}" method="GET">
+    <button type="submit" class="btn btn-primary">Proceed to Vote</button>
+</form>
+            </li>
+        {% endfor %}
+    {% else %}
+        <p>No voting events available at the moment.</p>
+    {% endif %}
+</ul>
+{% endblock %}
+
+<div class="header">
+    <h1>Flask Auth</h1>
+    {% if email %}
+    <div class="user-info">
+        Logged in as: {{ email }} |
+        <a href="/logout">Logout</a>
+    </div>
+    {% endif %}
+</div>
+
+</body>
+</html>

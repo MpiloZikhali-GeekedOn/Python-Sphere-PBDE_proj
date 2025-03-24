@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Manage Candidates</h2>
+    
+    <!-- Create Candidate Form -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="h5 mb-0">Add New Candidate</h3>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Full Name</label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="department" class="form-label">Department</label>
+                    <input type="text" class="form-control" id="department" name="department" required>
+                </div>
+                <div class="mb-3">
+                    <label for="position" class="form-label">Position</label>
+                    <select class="form-select" id="position" name="position" required>
+                        <option value="">Select Position</option>
+                        <option value="President">President</option>
+                        <option value="Vice">Vice President</option>
+                        <option value="Treasurer">Treasurer</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="political_party" class="form-label">Political Party</label>
+                    <input type="text" class="form-control" id="political_party" name="political_party" required>
+                </div>
+                <div class="mb-3">
+                    <label for="contribution" class="form-label">Contribution/Platform</label>
+                    <textarea class="form-control" id="contribution" name="contribution" rows="3" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="image" class="form-label">Profile Image</label>
+                    <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    <div class="form-text">Allowed formats: PNG, JPG, JPEG, GIF (Max size: 16MB)</div>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Candidate</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- List of Candidates -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="h5 mb-0">Existing Candidates</h3>
+        </div>
+        <div class="card-body">
+            {% if candidates %}
+                <div class="row">
+                    {% for candidate in candidates %}
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100">
+                                {% if candidate.image_url %}
+                                    <img src="{{ url_for('static', filename='uploads/' + candidate.image_url) }}" 
+                                         class="card-img-top" alt="{{ candidate.name }}"
+                                         style="height: 200px; object-fit: cover;">
+                                {% endif %}
+                                <div class="card-body">
+                                    <h5 class="card-title">{{ candidate.name }}</h5>
+                                    <h6 class="card-subtitle mb-2 text-muted">{{ candidate.position }}</h6>
+                                    <p class="card-text">
+                                        <strong>Department:</strong> {{ candidate.department }}<br>
+                                        <strong>Party:</strong> {{ candidate.political_party }}
+                                    </p>
+                                    <p class="card-text">
+                                        <small class="text-muted">
+                                            Added on {{ candidate.created_at.strftime('%Y-%m-%d') }}
+                                        </small>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No candidates found.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %} 

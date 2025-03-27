@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .dashboard-container {
+        font-family: 'Segoe UI', sans-serif;
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 30px;
+        background-color: #f9f9f9;
+        border-radius: 10px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+
+    h2, h3 {
+        color: #2c3e50;
+    }
+
+    .application-status {
+        list-style: none;
+        padding: 0;
+    }
+
+    .application-status li {
+        padding: 15px;
+        margin-bottom: 10px;
+        background-color: #ecf0f1;
+        border-radius: 8px;
+        font-weight: bold;
+        position: relative;
+        animation: fadeInUp 0.6s ease;
+    }
+
+    .status-pending {
+        border-left: 8px solid #f39c12;
+        color: #f39c12;
+    }
+
+    .status-approved {
+        border-left: 8px solid #27ae60;
+        color: #27ae60;
+    }
+
+    .status-rejected {
+        border-left: 8px solid #c0392b;
+        color: #c0392b;
+    }
+
+    @keyframes fadeInUp {
+        0% {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .apply-button {
+        background-color: #3498db;
+        border: none;
+        padding: 12px 20px;
+        color: white;
+        font-size: 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background-color 0.3s ease;
+    }
+
+    .apply-button:hover {
+        background-color: #2980b9;
+    }
+
+    .logout-link {
+        display: inline-block;
+        margin-top: 20px;
+        color: #e74c3c;
+        font-weight: bold;
+        text-decoration: none;
+    }
+
+    .logout-link:hover {
+        text-decoration: underline;
+    }
+</style>
+
+<div class="dashboard-container">
+    <h2>Student Dashboard</h2>
+    <p>Welcome, <strong>{{ current_user.email }}</strong></p>
+
+    <h3>Your Applications</h3>
+    {% if applications %}
+        <ul class="application-status">
+            {% for application in applications %}
+                <li class="
+                    {% if application.status == 'Pending' %}status-pending{% elif application.status == 'Approved' %}status-approved{% elif application.status == 'Rejected' %}status-rejected{% endif %}
+                ">
+                    {{ application.name }} — Status: {{ application.status }}
+                </li>
+            {% endfor %}
+        </ul>
+        <p>You have already submitted your application.</p>
+    {% else %}
+        <p>You haven't applied yet.</p>
+        <a href="{{ url_for('apply') }}" class="apply-button">Apply to Become a Candidate</a>
+    {% endif %}
+
+    <br><br>
+    <a href="{{ url_for('logout') }}" class="logout-link">Logout</a>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply as Candidate</title>
+</head>
+<body>
+    <h2>Candidate Application</h2>
+
+    <form method="POST" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+
+        <p>{{ form.name.label }} {{ form.name() }}</p>
+        <p>{{ form.surname.label }} {{ form.surname() }}</p>
+        <p>{{ form.student_number.label }} {{ form.student_number() }}</p>
+        <p>{{ form.achievements.label }} {{ form.achievements() }}</p>
+        <p>{{ form.certificate.label }} {{ form.certificate() }}</p>
+        <p>{{ form.motivation.label }} {{ form.motivation() }}</p>
+
+        <!-- New Fields -->
+        <p>{{ form.image.label }} {{ form.image() }}</p>
+        <p>{{ form.party.label }} {{ form.party() }}</p>
+        <p>{{ form.position.label }} {{ form.position() }}</p>
+
+        <p>{{ form.submit() }}</p>
+    </form>
+</body>
+</html>

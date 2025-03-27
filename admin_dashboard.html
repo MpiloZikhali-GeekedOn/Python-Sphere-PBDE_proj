@@ -1,0 +1,76 @@
+py{% extends "base.html" %}
+
+{% block content %}
+<h2>Admin Dashboard</h2>
+
+<!-- Dashboard Stats -->
+<div class="stats-container">
+    <a href="{{ url_for('filter_candidates', status='Pending') }}" class="stat-box pending">
+        <h3>Pending</h3>
+        <p id="pending">0</p>
+    </a>
+    <a href="{{ url_for('filter_candidates', status='Approved') }}" class="stat-box approved">
+        <h3>Approved</h3>
+        <p id="approved">0</p>
+    </a>
+    <a href="{{ url_for('filter_candidates', status='Rejected') }}" class="stat-box rejected">
+        <h3>Rejected</h3>
+        <p id="rejected">0</p>
+    </a>
+</div>
+
+<!-- Chart Container -->
+<canvas id="statusChart"></canvas>
+
+<!-- JavaScript to Fetch Data -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        fetch('/admin/stats')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('approved').innerText = data.approved;
+                document.getElementById('rejected').innerText = data.rejected;
+                document.getElementById('pending').innerText = data.pending;
+
+                // Check if chart canvas exists
+                const ctx = document.getElementById('statusChart');
+                if (ctx) {
+                    new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: ["Approved", "Rejected", "Pending"],
+                            datasets: [{
+                                data: [data.approved, data.rejected, data.pending],
+                                backgroundColor: ["green", "red", "orange"]
+                            }]
+                        }
+                    });
+                }
+            })
+            .catch(error => console.error("Error loading stats:", error));
+    });
+</script>
+
+<style>
+    .stats-container {
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 20px;
+    }
+    .stat-box {
+        padding: 15px;
+        text-align: center;
+        border-radius: 8px;
+        box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
+        width: 20%;
+        text-decoration: none;
+        color: black;
+        font-weight: bold;
+    }
+    .approved { background-color: #d4edda; }
+    .rejected { background-color: #f8d7da; }
+    .pending { background-color: #fff3cd; }
+</style>
+
+{% endblock %}

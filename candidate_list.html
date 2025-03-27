@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>{{ status }} Candidates</h2>
+
+<table border="1" cellpadding="10">
+    <tr>
+        <th>Image</th>
+        <th>Name</th>
+        <th>Student Number</th>
+        <th>Party</th>
+        <th>Position</th>
+        <th>Achievements</th>
+        <th>Motivation</th>
+        <th>Actions</th>
+    </tr>
+    {% for candidate in candidates %}
+    <tr>
+        <td>
+            {% if candidate.image %}
+                <img src="{{ url_for('static', filename='uploads/' + candidate.image) }}" width="50" height="50">
+            {% else %}
+                No Image
+            {% endif %}
+        </td>
+        <td>{{ candidate.name }} {{ candidate.surname }}</td>
+        <td>{{ candidate.student_number }}</td>
+        <td>{{ candidate.party }}</td>
+        <td>{{ candidate.position }}</td>
+        <td>{{ candidate.achievements }}</td>
+        <td>{{ candidate.motivation }}</td>
+        <td>
+            {% if status == "Pending" %}
+                <a href="{{ url_for('approve_candidate', candidate_id=candidate.id) }}">Approve</a> | 
+                <a href="{{ url_for('reject_candidate', candidate_id=candidate.id) }}">Reject</a>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

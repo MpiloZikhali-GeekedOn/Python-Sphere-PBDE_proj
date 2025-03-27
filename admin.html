@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+</head>
+<body>
+    <h2>Admin Panel - Manage Applications</h2>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Student Number</th>
+            <th>Achievements</th>
+            <th>Motivation</th>
+            <th>Certificate</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+        {% for candidate in candidates %}
+        <tr>
+            <td>{{ candidate.id }}</td>
+            <td>{{ candidate.name }} {{ candidate.surname }}</td>
+            <td>{{ candidate.student_number }}</td>
+            <td>{{ candidate.achievements }}</td>
+            <td>{{ candidate.motivation }}</td>
+            <td>
+                {% if candidate.certificate %}
+                    <a href="{{ url_for('download_certificate', filename=candidate.certificate) }}">Download</a>
+                {% else %}
+                    No File
+                {% endif %}
+            </td>
+            <td>{{ candidate.status }}</td>
+            <td>
+                <a href="{{ url_for('approve_candidate', candidate_id=candidate.id) }}">Approve</a> |
+                <a href="{{ url_for('reject_candidate', candidate_id=candidate.id) }}">Reject</a> |
+                <a href="{{ url_for('delete_candidate', candidate_id=candidate.id) }}">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

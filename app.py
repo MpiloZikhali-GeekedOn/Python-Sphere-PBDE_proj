@@ -1,891 +1,209 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, abort, make_response, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_migrate import Migrate
-from flask_cors import CORS
-from datetime import datetime, timedelta
+from flask_wtf import FlaskForm
+from wtforms import StringField, TextAreaField, FileField, SubmitField
+from wtforms.validators import DataRequired
 from werkzeug.utils import secure_filename
+from forms import CandidateForm
+from flask_admin import Admin
+from flask_admin.contrib.sqla import ModelView
+from flask_bcrypt import Bcrypt
+from flask_login import login_required
+from flask_login import LoginManager
+from flask_login import login_user
+from flask_login import current_user
+from flask_login import login_required, current_user
+from flask_login import logout_user
+from flask_migrate import Migrate  # Added Flask-Migrate
 import os
 import json
-import uuid
-from functools import wraps
-import pytz
 
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, desc, and_, or_
-
-# App Initialization
+# Create Flask App
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
-
-# Enable CORS
-CORS(app)
-
-# Set timezone for the application
-TIMEZONE = pytz.timezone('Africa/Johannesburg')
-
-# Initialize Flask-Login
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-
-# Context Processors
-@app.context_processor
-def utility_processor():
-    return {
-        'now': datetime.now(TIMEZONE)  # Use local timezone
-    }
-
-# Database Initialization
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auth4.db'
+# Configure Database
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///candidates.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+app.config['SECRET_KEY'] = 'supersecretkey123'
+app.config['UPLOAD_FOLDER'] = 'uploads/'
 
-# Initialize Flask-Migrate
-migrate = Migrate(app, db)
 
-# Ensure database exists and is initialized
-def init_db():
-    with app.app_context():
-        db.create_all()
-        print("Database initialized successfully!")
-
-# Initialize database on startup
-init_db()
-
-# Bcrypt for password hashing
 bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'student_login'
 
-# Admin Credentials
-ADMIN_EMAIL = "admin@voting.com"
-ADMIN_PASSWORD = "admin123"  # Should be hashed in production
 
-# File Upload Configuration
-UPLOAD_FOLDER = 'static/uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+# Import db from models.py
+from models import db, Candidate
 
-# Create upload folder if it doesn't exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Initialize db and Migrate
+db.init_app(app)
+migrate = Migrate(app, db)  # Added Migrate
 
-# User Model
-class User(UserMixin, db.Model):
-    __tablename__ = 'users'
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    student_number = db.Column(db.String(20), unique=True, nullable=False)
-    email = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(TIMEZONE))
-    is_active = db.Column(db.Boolean, default=True)
-    
-    # Relationships
-    votes = db.relationship('Vote', backref='voter', lazy=True)
+@app.route('/apply', methods=['GET', 'POST'])
+@login_required
+def apply():
+    form = CandidateForm()
 
-    def get_id(self):
-        return str(self.id)
+    if form.validate_on_submit():
+        # Handle file upload
+        file = form.certificate.data
+        filename = None
+        if file:
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
-# Candidate Model
-class Candidate(db.Model):
-    __tablename__ = 'candidates'
+        # Save to database with student_id
+        new_candidate = Candidate(
+            name=form.name.data,
+            surname=form.surname.data,
+            student_number=form.student_number.data,
+            achievements=form.achievements.data,
+            certificate=filename,
+            motivation=form.motivation.data,
+            image=None,  # Optional: handle image later
+            party=form.party.data,
+            position=form.position.data,
+            student_id=current_user.id  # ✅ This line fixes the error
+        )
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    department = db.Column(db.String(100), nullable=False)
-    position = db.Column(db.Enum('President', 'Vice', 'Treasurer', name='position_types'), nullable=False)
-    political_party = db.Column(db.String(100), nullable=False)
-    contribution = db.Column(db.Text, nullable=False)
-    image_url = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(TIMEZONE))
-    
-    # Relationships
-    votes = db.relationship('Vote', backref='candidate', lazy=True)
-    events = db.relationship('VotingEvent', 
-                           secondary='event_candidates',
-                           backref=db.backref('candidates', lazy='dynamic'))
-
-# Voting Event Model
-class VotingEvent(db.Model):
-    __tablename__ = 'voting_events'
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
-    start_date = db.Column(db.DateTime, nullable=False)
-    end_date = db.Column(db.DateTime, nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(TIMEZONE))
-    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    
-    # Relationships
-    votes = db.relationship('Vote', backref='event', lazy=True)
-    created_by = db.relationship('User', backref='created_events')
-
-    @staticmethod
-    def update_event_status():
-        now = datetime.now(TIMEZONE)  # Use local timezone
-        print(f"Current time (SAST): {now}")  # Debug print
-        events = VotingEvent.query.all()
-        for event in events:
-            # Convert naive datetimes to local timezone if needed
-            if event.start_date.tzinfo is None:
-                event.start_date = TIMEZONE.localize(event.start_date)
-            if event.end_date.tzinfo is None:
-                event.end_date = TIMEZONE.localize(event.end_date)
-                
-            print(f"Updating event: {event.name}, Start: {event.start_date}, End: {event.end_date}")  # Debug print
-            event.is_active = event.start_date <= now <= event.end_date
-            print(f"Event {event.name} is_active: {event.is_active}")  # Debug print
+        db.session.add(new_candidate)
         db.session.commit()
+        flash('Application submitted successfully!', 'success')
+        return redirect(url_for('student_dashboard'))
 
-# Event-Candidate Association Table
-event_candidates = db.Table('event_candidates',
-    db.Column('event_id', db.Integer, db.ForeignKey('voting_events.id'), primary_key=True),
-    db.Column('candidate_id', db.Integer, db.ForeignKey('candidates.id'), primary_key=True),
-    db.Column('added_at', db.DateTime, default=lambda: datetime.now(TIMEZONE))
-)
+    return render_template('apply.html', form=form)
 
-# Vote Model
-class Vote(db.Model):
-    __tablename__ = 'votes'
+# Initialize Flask-Admin
+admin = Admin(app, name="Admin Panel", template_mode="bootstrap4")
 
-    id = db.Column(db.Integer, primary_key=True)
-    voter_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    candidate_id = db.Column(db.Integer, db.ForeignKey('candidates.id'), nullable=False)
-    event_id = db.Column(db.Integer, db.ForeignKey('voting_events.id'), nullable=False)
-    voted_at = db.Column(db.DateTime, default=lambda: datetime.now(TIMEZONE))
-    ip_address = db.Column(db.String(45))  # Store IP for audit
+# Create an admin view for Candidate model
+class CandidateAdmin(ModelView):
+    column_list = ['id', 'name', 'surname', 'student_number', 'status']
+    form_columns = ['name', 'surname', 'student_number', 'achievements', 'certificate', 'motivation', 'status']
+    column_searchable_list = ['name', 'surname', 'student_number']
+    column_filters = ['status']
 
-    __table_args__ = (
-        db.UniqueConstraint('voter_id', 'event_id', 'candidate_id', name='unique_vote'),
-    )
+admin.add_view(CandidateAdmin(Candidate, db.session))
 
-# Audit Log Model for tracking important actions
-class AuditLog(db.Model):
-    __tablename__ = 'audit_logs'
+# API for Dashboard Data
+@app.route('/admin/stats')
+def admin_stats():
+    total_candidates = Candidate.query.count()
+    approved = Candidate.query.filter_by(status="Approved").count()
+    rejected = Candidate.query.filter_by(status="Rejected").count()
+    pending = Candidate.query.filter_by(status="Pending").count()
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    action = db.Column(db.String(100), nullable=False)
-    details = db.Column(db.Text)
-    ip_address = db.Column(db.String(45))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(TIMEZONE))
+    return jsonify({
+        "total": total_candidates,
+        "approved": approved,
+        "rejected": rejected,
+        "pending": pending
+    })
 
-    user = db.relationship('User', backref='audit_logs')
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    return render_template('admin_dashboard.html')
+
+@app.route('/admin/candidates/<status>')
+def filter_candidates(status):
+    if status not in ["Pending", "Approved", "Rejected"]:
+        flash("Invalid status!", "danger")
+        return redirect(url_for('admin_dashboard'))
+    
+    candidates = Candidate.query.filter_by(status=status).all()
+    return render_template('candidate_list.html', candidates=candidates, status=status)
+
+@app.route('/admin')
+def admin():
+    candidates = Candidate.query.all()
+    return render_template('admin.html', candidates=candidates)
+
+@app.route('/download/<filename>')
+def download_certificate(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+@app.route('/approve/<int:candidate_id>')
+def approve_candidate(candidate_id):
+    candidate = Candidate.query.get_or_404(candidate_id)
+    candidate.status = "Approved"
+    db.session.commit()
+    flash('Candidate Approved!', 'success')
+    return redirect(url_for('admin'))
+
+@app.route('/reject/<int:candidate_id>')
+def reject_candidate(candidate_id):
+    candidate = Candidate.query.get_or_404(candidate_id)
+    candidate.status = "Rejected"
+    db.session.commit()
+    flash('Candidate Rejected!', 'danger')
+    return redirect(url_for('admin'))
+
+@app.route('/delete/<int:candidate_id>')
+def delete_candidate(candidate_id):
+    candidate = Candidate.query.get_or_404(candidate_id)
+    db.session.delete(candidate)
+    db.session.commit()
+    flash('Candidate Deleted!', 'danger')
+    return redirect(url_for('admin'))
+
+@app.route('/')  
+def home():
+    return render_template('home.html')
+
+from models import db, Student, Candidate
+from forms import StudentRegistrationForm, StudentLoginForm
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
-
-# Create all tables
-with app.app_context():
-    db.create_all()
-
-@app.before_request
-def update_events():
-    VotingEvent.update_event_status()
-
-# ------------------------- AUTH ROUTES -------------------------
-
-@app.route('/')
-def index():
-    if not current_user.is_authenticated:
-        return redirect(url_for('login'))
-    if session.get('role') == 'admin':
-        return redirect(url_for('admin_dashboard'))
-    return redirect(url_for('view_events'))
-
-@app.route('/menu')
-@login_required
-def menu():
-    if session.get('role') == 'admin':
-        return redirect(url_for('admin_dashboard'))
-    return redirect(url_for('view_events'))
+    return Student.query.get(int(user_id))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('view_events'))
-
-    if request.method == 'POST':
-        name = request.form.get('name')
-        student_number = request.form.get('student_number')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        confirm_password = request.form.get('confirm_password')
-
-        # Validation
-        if not all([name, student_number, email, password, confirm_password]):
-            flash('All fields are required!', 'error')
-            return redirect(url_for('register'))
-
-        # Validate student number format (8 digits)
-        if not student_number.isdigit() or len(student_number) != 8:
-            flash('Invalid student number format! Must be 8 digits.', 'error')
-            return redirect(url_for('register'))
-
-        # Validate email format
-        expected_email = f"{student_number}@dut4life.ac.za"
-        if email != expected_email:
-            flash('Email must match your student number format: studentnumber@dut4life.ac.za', 'error')
-            return redirect(url_for('register'))
-
-        if password != confirm_password:
-            flash('Passwords do not match!', 'error')
-            return redirect(url_for('register'))
-
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered!', 'error')
-            return redirect(url_for('register'))
-
-        if User.query.filter_by(student_number=student_number).first():
-            flash('Student number already registered!', 'error')
-            return redirect(url_for('register'))
-
-        try:
-            # Create new user
-            hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-            new_user = User(
-                name=name,
-                student_number=student_number,
-                email=email,
-                password=hashed_password
-            )
-            db.session.add(new_user)
-            db.session.commit()
-
-            # Log the registration
-            log = AuditLog(
-                user_id=new_user.id,
-                action='REGISTER',
-                details=f'User registration: {email} (Student: {student_number})',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-            db.session.commit()
-
-            # Automatically log in the user
-            login_user(new_user)
-            session['role'] = 'student'
-
-            flash('Registration successful! Welcome to the Student Voting System.', 'success')
-            return redirect(url_for('view_events'))
-        except Exception as e:
-            db.session.rollback()
-            flash('An error occurred during registration.', 'error')
-            return redirect(url_for('register'))
-
-    return render_template('register.html')
+    form = StudentRegistrationForm()
+    if form.validate_on_submit():
+        hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
+        student = Student(email=form.email.data, password=hashed_password)
+        db.session.add(student)
+        db.session.commit()
+        flash('Registration successful! Please log in.', 'success')
+        return redirect(url_for('student_login'))
+    
+    # Print form errors if validation fails
+    print(form.errors)  
+    return render_template('register.html', form=form)
 
 @app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('view_events'))
-
-    if request.method == 'POST':
-        login_id = request.form.get('login_id')
-        password = request.form.get('password')
-        remember = request.form.get('remember', False)
-
-        # Check Admin Login
-        if login_id == ADMIN_EMAIL and password == ADMIN_PASSWORD:
-            session.clear()
-            session['user_email'] = ADMIN_EMAIL
-            session['role'] = 'admin'
-            
-            # Log admin login
-            log = AuditLog(
-                action='LOGIN',
-                details=f'Admin login: {login_id}',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-            db.session.commit()
-            
-            flash('Welcome Admin!', 'success')
-            return redirect(url_for('admin_dashboard'))
-
-        # If login_id is student number, convert to email format
-        if login_id.isdigit() and len(login_id) == 8:
-            login_id = f"{login_id}@dut4life.ac.za"
-
-        # Check Student Login (by email or student number)
-        user = User.query.filter(User.email == login_id).first()
-
-        if user and bcrypt.check_password_hash(user.password, password):
-            if not user.is_active:
-                flash('Your account has been deactivated. Please contact admin.', 'error')
-                return redirect(url_for('login'))
-
-            login_user(user, remember=remember)
-            session['role'] = 'student'
-            
-            # Log user login
-            log = AuditLog(
-                user_id=user.id,
-                action='LOGIN',
-                details=f'User login: {user.email} (Student: {user.student_number})',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-            db.session.commit()
-
+def student_login():
+    form = StudentLoginForm()
+    if form.validate_on_submit():
+        student = Student.query.filter_by(email=form.email.data).first()
+        if student and bcrypt.check_password_hash(student.password, form.password.data):
+            login_user(student)  # This line logs in the user
             flash('Login successful!', 'success')
-            next_page = request.args.get('next')
-            return redirect(next_page if next_page else url_for('menu'))
+            return redirect(url_for('student_dashboard'))
+        else:
+            flash('Login failed. Check email and password.', 'danger')
 
-        flash('Invalid credentials!', 'error')
-        return redirect(url_for('login'))
-
-    return render_template('login.html')
+    return render_template('login.html', form=form)
 
 @app.route('/logout')
+@login_required
 def logout():
-    was_student = session.get('role') == 'student'  # Check if user was a student before logout
-    
-    if current_user.is_authenticated:
-        # Log the logout
-        log = AuditLog(
-            user_id=current_user.id if not session.get('role') == 'admin' else None,
-            action='LOGOUT',
-            details=f'Logout: {current_user.email if not session.get("role") == "admin" else "admin"}',
-            ip_address=request.remote_addr
-        )
-        db.session.add(log)
-        db.session.commit()
-
-    # Clear the user session
     logout_user()
-    session.clear()
+    flash("You have been logged out.", "info")
+    return redirect(url_for('home'))  # Or wherever you want to redirect after logout
     
-    # Clear the remember me cookie
-    response = make_response(redirect(url_for('register') if was_student else url_for('login')))
-    response.delete_cookie('remember_token')  # Clear Flask-Login's remember me cookie
-    response.delete_cookie('session')  # Clear the session cookie
-    
-    flash('You have been logged out. See you next time!', 'info')
-    return response
-
-@app.route('/profile', methods=['GET', 'POST'])
+@app.route('/student/dashboard')
 @login_required
-def profile():
-    if session.get('role') == 'admin':
-        return redirect(url_for('admin_dashboard'))
+def student_dashboard():
+    applications = Candidate.query.filter_by(student_id=current_user.id).all() # Use current_user here
+    return render_template('student_dashboard.html', applications=applications)
 
-    if request.method == 'POST':
-        name = request.form.get('name')
-        current_password = request.form.get('current_password')
-        new_password = request.form.get('new_password')
-        confirm_password = request.form.get('confirm_password')
-
-        if name:
-            current_user.name = name
-
-        if current_password and new_password:
-            if not bcrypt.check_password_hash(current_user.password, current_password):
-                flash('Current password is incorrect!', 'error')
-                return redirect(url_for('profile'))
-
-            if new_password != confirm_password:
-                flash('New passwords do not match!', 'error')
-                return redirect(url_for('profile'))
-
-            current_user.password = bcrypt.generate_password_hash(new_password).decode('utf-8')
-            
-            # Log password change
-            log = AuditLog(
-                user_id=current_user.id,
-                action='PASSWORD_CHANGE',
-                details='User changed password',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-
-        try:
-            db.session.commit()
-            flash('Profile updated successfully!', 'success')
-        except Exception as e:
-            db.session.rollback()
-            flash('An error occurred while updating profile.', 'error')
-
-    return render_template('profile.html', user=current_user)
-
-# ------------------------- ADMIN ROUTES -------------------------
-
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if session.get('role') != 'admin':
-            flash('Access denied. Admin privileges required.', 'error')
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-@app.route('/admin')
-@admin_required
-def admin_dashboard():
-    # Get statistics
-    total_candidates = Candidate.query.count()
-    total_events = VotingEvent.query.count()
-    now = datetime.now(TIMEZONE)  # Use local time
-    active_events = VotingEvent.query.filter(
-        and_(
-            VotingEvent.start_date <= now,
-            VotingEvent.end_date >= now,
-            VotingEvent.is_active == True
-        )
-    ).count()
-    total_votes = Vote.query.count()
-
-    # Get recent activities
-    recent_activities = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(10).all()
-
-    return render_template('admin_dashboard.html',
-                        total_candidates=total_candidates,
-                        total_events=total_events,
-                        active_events=active_events,
-                        total_votes=total_votes,
-                        recent_activities=recent_activities)
-
-@app.route('/admin/candidates', methods=['GET', 'POST'])
-@admin_required
-def manage_candidates():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        department = request.form.get('department')
-        position = request.form.get('position')
-        political_party = request.form.get('political_party')
-        contribution = request.form.get('contribution')
-        image = request.files.get('image')
-
-        if not all([name, department, position, political_party, contribution]):
-            flash('All fields except image are required!', 'error')
-            return redirect(url_for('manage_candidates'))
-
-        try:
-            new_candidate = Candidate(
-                name=name,
-                department=department,
-                position=position,
-                political_party=political_party,
-                contribution=contribution
-            )
-
-            if image and allowed_file(image.filename):
-                filename = secure_filename(f"{uuid.uuid4()}_{image.filename}")
-                image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                new_candidate.image_url = filename
-
-            db.session.add(new_candidate)
-            db.session.commit()
-
-            # Log the action
-            log = AuditLog(
-                action='CREATE_CANDIDATE',
-                details=f'Created candidate: {name}',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-            db.session.commit()
-
-            flash('Candidate added successfully!', 'success')
-            return redirect(url_for('manage_candidates'))
-
-        except Exception as e:
-            db.session.rollback()
-            flash('An error occurred while adding the candidate.', 'error')
-            return redirect(url_for('manage_candidates'))
-
-    candidates = Candidate.query.order_by(Candidate.created_at.desc()).all()
-    return render_template('admin/manage_candidates.html', candidates=candidates)
-
-@app.route('/admin/events', methods=['GET', 'POST'])
-@admin_required
-def manage_events():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        description = request.form.get('description')
-        start_date = request.form.get('start_date')
-        end_date = request.form.get('end_date')
-
-        if not all([name, start_date, end_date]):
-            flash('Name, start date, and end date are required!', 'error')
-            return redirect(url_for('manage_events'))
-
-        try:
-            # Parse dates and ensure they're in local timezone
-            start_date = datetime.strptime(start_date, '%Y-%m-%dT%H:%M')
-            end_date = datetime.strptime(end_date, '%Y-%m-%dT%H:%M')
-            
-            # Localize the datetimes to local timezone
-            start_date = TIMEZONE.localize(start_date)
-            end_date = TIMEZONE.localize(end_date)
-
-            if start_date >= end_date:
-                flash('End date must be after start date!', 'error')
-                return redirect(url_for('manage_events'))
-
-            new_event = VotingEvent(
-                name=name,
-                description=description,
-                start_date=start_date,
-                end_date=end_date,
-                is_active=True  # Ensure new events are active by default
-            )
-
-            db.session.add(new_event)
-            db.session.commit()
-
-            # Log the action
-            log = AuditLog(
-                action='CREATE_EVENT',
-                details=f'Created event: {name} (Start: {start_date}, End: {end_date})',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-            db.session.commit()
-
-            flash('Event created successfully!', 'success')
-            return redirect(url_for('manage_events'))
-
-        except Exception as e:
-            db.session.rollback()
-            flash(f'An error occurred while creating the event: {str(e)}', 'error')
-            return redirect(url_for('manage_events'))
-
-    events = VotingEvent.query.order_by(VotingEvent.created_at.desc()).all()
-    return render_template('admin/manage_events.html', events=events)
-
-@app.route('/admin/event/<int:event_id>/candidates', methods=['GET', 'POST'])
-@admin_required
-def manage_event_candidates(event_id):
-    event = VotingEvent.query.get_or_404(event_id)
-    
-    if request.method == 'POST':
-        selected_candidates = request.form.getlist('candidates')
-        try:
-            # Clear existing candidates
-            event.candidates = []
-            
-            # Add selected candidates
-            for candidate_id in selected_candidates:
-                candidate = Candidate.query.get(candidate_id)
-                if candidate:
-                    event.candidates.append(candidate)
-            
-            db.session.commit()
-            
-            # Log the action
-            log = AuditLog(
-                action='UPDATE_EVENT_CANDIDATES',
-                details=f'Updated candidates for event: {event.name}',
-                ip_address=request.remote_addr
-            )
-            db.session.add(log)
-            db.session.commit()
-            
-            flash('Event candidates updated successfully!', 'success')
-        except Exception as e:
-            db.session.rollback()
-            flash('An error occurred while updating candidates.', 'error')
-            
-    candidates = Candidate.query.all()
-    return render_template('admin/manage_event_candidates.html', 
-                         event=event, 
-                         candidates=candidates)
-
-@app.route('/admin/event/<int:event_id>/delete', methods=['POST'])
-@admin_required
-def delete_event(event_id):
-    event = VotingEvent.query.get_or_404(event_id)
-    try:
-        # Delete associated votes first
-        Vote.query.filter_by(event_id=event_id).delete()
-        
-        # Delete event
-        db.session.delete(event)
-        
-        # Log the action
-        log = AuditLog(
-            action='DELETE_EVENT',
-            details=f'Deleted event: {event.name}',
-            ip_address=request.remote_addr
-        )
-        db.session.add(log)
-        db.session.commit()
-        
-        flash('Event deleted successfully!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash('An error occurred while deleting the event.', 'error')
-    
-    return redirect(url_for('manage_events'))
-
-@app.route('/admin/candidate/<int:candidate_id>/delete', methods=['POST'])
-@admin_required
-def delete_candidate(candidate_id):
-    candidate = Candidate.query.get_or_404(candidate_id)
-    try:
-        db.session.delete(candidate)
-        db.session.commit()
-
-        # Log the action
-        log = AuditLog(
-            action='DELETE_CANDIDATE',
-            details=f'Deleted candidate: {candidate.name}',
-            ip_address=request.remote_addr
-        )
-        db.session.add(log)
-        db.session.commit()
-
-        flash('Candidate deleted successfully!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash('An error occurred while deleting the candidate.', 'error')
-
-    return redirect(url_for('manage_candidates'))
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def get_positions_for_event(event_id):
-    # Define this function to retrieve positions for the event
-    event = VotingEvent.query.get(event_id)
-    if not event:
-        return []
-    return [candidate.position for candidate in event.candidates]
-
-@app.route('/event_results/<int:event_id>')
-@login_required
-def event_results(event_id):
-    event = VotingEvent.query.get_or_404(event_id)
-    
-    # Get all positions from the event's candidates
-    positions = {}
-    for candidate in event.candidates:
-        if candidate.position not in positions:
-            positions[candidate.position] = {
-                'title': candidate.position,
-                'description': f'Candidates running for {candidate.position}',
-                'candidates': [],
-                'total_votes': 0,
-                'winner': None
-            }
-        
-        # Get vote count for this candidate
-        vote_count = Vote.query.filter_by(
-            candidate_id=candidate.id,
-            event_id=event_id
-        ).count()
-        
-        # Handle image URL
-        image_url = None
-        if candidate.image_url:
-            image_url = url_for('static', filename=f'uploads/{candidate.image_url}')
-        
-        # Add candidate to position with vote count
-        positions[candidate.position]['candidates'].append({
-            'id': candidate.id,
-            'name': candidate.name,
-            'bio': candidate.contribution,
-            'image_url': image_url,
-            'vote_count': vote_count
-        })
-        
-        # Add to total votes for this position
-        positions[candidate.position]['total_votes'] += vote_count
-    
-    # Calculate winners for each position
-    for position in positions.values():
-        if position['candidates']:
-            # Sort candidates by vote count
-            position['candidates'].sort(key=lambda x: x['vote_count'], reverse=True)
-            # Set winner as the candidate with most votes
-            position['winner'] = position['candidates'][0]
-    
-    return render_template('event_results.html',
-                         event=event,
-                         positions=positions.values())
-
-# ------------------------- VOTING ROUTES -------------------------
-
-@app.route('/events')
-@login_required
-def view_events():
-    # Use local timezone for consistent comparison
-    now = datetime.now(TIMEZONE)
-    
-    # Pagination parameters
-    page = request.args.get('page', 1, type=int)
-    per_page = 10  # Number of events per page
-
-    # Active events: started but not ended
-    active_events = VotingEvent.query.filter(
-        and_(
-            VotingEvent.start_date <= now,
-            VotingEvent.end_date >= now,
-            VotingEvent.is_active == True
-        )
-    ).order_by(VotingEvent.start_date).paginate(page=page, per_page=per_page, error_out=False)
-
-    # Past events: already ended
-    past_events = VotingEvent.query.filter(
-        VotingEvent.end_date < now
-    ).order_by(VotingEvent.end_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
-
-    # Upcoming events: not started yet
-    upcoming_events = VotingEvent.query.filter(
-        VotingEvent.start_date > now
-    ).order_by(VotingEvent.start_date).paginate(page=page, per_page=per_page, error_out=False)
-
-    return render_template('events.html',
-                         active_events=active_events.items,
-                         past_events=past_events.items,
-                         upcoming_events=upcoming_events.items,
-                         current_time=now,
-                         active_events_pagination=active_events,
-                         past_events_pagination=past_events,
-                         upcoming_events_pagination=upcoming_events)
-
-@app.route('/event/<int:event_id>')
-@login_required
-def view_event(event_id):
-    event = VotingEvent.query.get_or_404(event_id)
-    now = datetime.now(TIMEZONE)
-    
-    # Ensure event dates are timezone-aware
-    if event.start_date.tzinfo is None:
-        event.start_date = TIMEZONE.localize(event.start_date)
-    if event.end_date.tzinfo is None:
-        event.end_date = TIMEZONE.localize(event.end_date)
-    
-    # Check if event is active
-    is_active = event.start_date <= now <= event.end_date and event.is_active
-    
-    # Get candidates for this event
-    candidates = event.candidates
-    
-    # Check if user has already voted
-    user_vote = None
-    if current_user.is_authenticated:
-        user_vote = Vote.query.filter_by(
-            voter_id=current_user.id,
-            event_id=event_id
-        ).first()
-    
-    # Get vote counts for each candidate
-    candidate_votes = {}
-    total_votes = Vote.query.filter_by(event_id=event_id).count()
-    
-    for candidate in candidates:
-        votes = Vote.query.filter_by(
-            candidate_id=candidate.id,
-            event_id=event_id
-        ).count()
-        percentage = (votes / total_votes * 100) if total_votes > 0 else 0
-        candidate_votes[candidate.id] = {
-            'count': votes,
-            'percentage': round(percentage, 1)
-        }
-    
-    return render_template('event_detail.html',
-                         event=event,
-                         candidates=candidates,
-                         is_active=is_active,
-                         user_vote=user_vote,
-                         candidate_votes=candidate_votes,
-                         total_votes=total_votes)
-
-@app.route('/vote/<int:event_id>/<int:candidate_id>', methods=['POST'])
-@login_required
-def vote(event_id, candidate_id):
-    try:
-        # Get the event and candidate
-        event = VotingEvent.query.get_or_404(event_id)
-        candidate = Candidate.query.get_or_404(candidate_id)
-        
-        # Check if event is active
-        now = datetime.now(TIMEZONE)
-        print(f"Current time (SAST): {now}")
-        
-        # Ensure event dates are timezone-aware
-        if event.start_date.tzinfo is None:
-            event.start_date = TIMEZONE.localize(event.start_date)
-        if event.end_date.tzinfo is None:
-            event.end_date = TIMEZONE.localize(event.end_date)
-            
-        print(f"Event start: {event.start_date}, Event end: {event.end_date}")
-        print(f"Event is_active: {event.is_active}")
-        
-        # Debug print timezone info
-        print(f"Start date timezone: {event.start_date.tzinfo}")
-        print(f"End date timezone: {event.end_date.tzinfo}")
-        print(f"Current time timezone: {now.tzinfo}")
-        
-        if not (event.start_date <= now <= event.end_date and event.is_active):
-            print("Event is not active")
-            flash('This voting event is not currently active.', 'error')
-            return redirect(url_for('view_events'))
-        
-        # Check if user has already voted in this event
-        existing_vote = Vote.query.filter_by(
-            voter_id=current_user.id,
-            event_id=event_id
-        ).first()
-        
-        if existing_vote:
-            print("User has already voted")
-            flash('You have already voted in this event.', 'error')
-            return redirect(url_for('view_event', event_id=event_id))
-        
-        # Create new vote
-        new_vote = Vote(
-            voter_id=current_user.id,
-            candidate_id=candidate_id,
-            event_id=event_id,
-            ip_address=request.remote_addr
-        )
-        db.session.add(new_vote)
-        
-        # Log the voting action
-        log = AuditLog(
-            user_id=current_user.id,
-            action='VOTE_CAST',
-            details=f'Vote cast in event: {event.name}',
-            ip_address=request.remote_addr
-        )
-        db.session.add(log)
-        
-        try:
-            db.session.commit()
-            print("Vote recorded successfully")
-            flash('Your vote has been recorded successfully!', 'success')
-        except IntegrityError as e:
-            db.session.rollback()
-            print(f"Database integrity error: {str(e)}")
-            flash('You have already voted in this event.', 'error')
-        except Exception as e:
-            db.session.rollback()
-            print(f"Database error: {str(e)}")
-            flash('An error occurred while saving your vote. Please try again.', 'error')
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"Voting error: {str(e)}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        flash('An error occurred while recording your vote. Please try again.', 'error')
-        
-    return redirect(url_for('view_event', event_id=event_id))
-
-with app.app_context():
-    db.create_all()
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+
 
